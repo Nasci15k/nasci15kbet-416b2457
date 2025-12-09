@@ -1,6 +1,16 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Menu, Wallet, User, LogIn } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Menu, Wallet, User, LogIn, LogOut, Settings, CreditCard, History, Crown } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface HeaderProps {
   balance: number;
@@ -11,6 +21,18 @@ interface HeaderProps {
 }
 
 export const Header = ({ balance, isLoggedIn, onMenuToggle, onLogin, onDeposit }: HeaderProps) => {
+  const navigate = useNavigate();
+  const { signOut, profile, isAdmin } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      navigate("/");
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+  };
+
   return (
     <header className="fixed top-0 left-0 right-0 z-50 h-16 bg-background/95 backdrop-blur-md border-b border-border">
       <div className="flex items-center justify-between h-full px-4">
@@ -20,7 +42,7 @@ export const Header = ({ balance, isLoggedIn, onMenuToggle, onLogin, onDeposit }
             <Menu className="h-5 w-5" />
           </Button>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
             <div className="flex items-center gap-1">
               <span className="text-xl font-bold text-foreground">Nasci</span>
               <span className="text-xl font-bold text-primary">15k</span>
@@ -57,9 +79,56 @@ export const Header = ({ balance, isLoggedIn, onMenuToggle, onLogin, onDeposit }
                 Depositar
               </Button>
               
-              <Button variant="ghost" size="icon" className="rounded-full bg-secondary">
-                <User className="h-5 w-5" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="rounded-full bg-secondary">
+                    <User className="h-5 w-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>
+                    <div className="flex flex-col">
+                      <span className="font-medium">{profile?.name || "Usuário"}</span>
+                      <span className="text-xs text-muted-foreground">{profile?.email}</span>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate("/profile")}>
+                    <User className="h-4 w-4 mr-2" />
+                    Meu Perfil
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/wallet")}>
+                    <Wallet className="h-4 w-4 mr-2" />
+                    Carteira
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/deposit")}>
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Depositar
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/withdraw")}>
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Sacar
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/transactions")}>
+                    <History className="h-4 w-4 mr-2" />
+                    Histórico
+                  </DropdownMenuItem>
+                  {isAdmin && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => navigate("/admin")}>
+                        <Crown className="h-4 w-4 mr-2" />
+                        Painel Admin
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout} className="text-destructive">
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Sair
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </>
           ) : (
             <>

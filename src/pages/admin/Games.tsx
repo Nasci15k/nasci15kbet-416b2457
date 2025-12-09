@@ -20,14 +20,17 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { useAllGames, useUpdateGame, useDeleteGame } from "@/hooks/useGames";
-import { Search, Edit, Trash2, RefreshCw } from "lucide-react";
-import { toast } from "sonner";
+import { useAllGames, useUpdateGame, useDeleteGame, useAllGameProviders } from "@/hooks/useGames";
+import { useSyncGames } from "@/hooks/usePlayfivers";
+import { Search, Edit, Trash2, RefreshCw, Loader2, Download } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 const Games = () => {
   const { data: games, isLoading, refetch } = useAllGames();
+  const { data: providers } = useAllGameProviders();
   const updateGame = useUpdateGame();
   const deleteGame = useDeleteGame();
+  const syncGames = useSyncGames();
 
   const [search, setSearch] = useState("");
   const [editModal, setEditModal] = useState(false);
@@ -36,6 +39,11 @@ const Games = () => {
   const filteredGames = games?.filter((game) =>
     game.name.toLowerCase().includes(search.toLowerCase())
   );
+
+  const getProviderName = (providerId: string | null) => {
+    if (!providerId) return "N/A";
+    return providers?.find((p) => p.id === providerId)?.name || "N/A";
+  };
 
   const handleToggleActive = async (game: any) => {
     await updateGame.mutateAsync({
@@ -74,17 +82,31 @@ const Games = () => {
     setEditModal(false);
   };
 
+  const handleSyncGames = async () => {
+    await syncGames.mutateAsync();
+    refetch();
+  };
+
   return (
     <AdminLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold text-foreground">Jogos</h2>
-            <p className="text-muted-foreground">Gerencie todos os jogos</p>
+            <p className="text-muted-foreground">
+              Gerencie todos os jogos • {games?.length || 0} jogos no total
+            </p>
           </div>
-          <Button onClick={() => refetch()} variant="outline">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Sincronizar com API
+          <Button 
+            onClick={handleSyncGames} 
+            disabled={syncGames.isPending}
+          >
+            {syncGames.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            Sincronizar com Playfivers
           </Button>
         </div>
 
@@ -100,6 +122,9 @@ const Games = () => {
                   className="pl-9"
                 />
               </div>
+              <Button variant="outline" onClick={() => refetch()}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
@@ -107,8 +132,9 @@ const Games = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Jogo</TableHead>
-                  <TableHead>Código</TableHead>
+                  <TableHead>Provedor</TableHead>
                   <TableHead>RTP</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Ativo</TableHead>
                   <TableHead>Destaque</TableHead>
                   <TableHead>Jogadas</TableHead>
@@ -118,18 +144,21 @@ const Games = () => {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center">
-                      Carregando...
+                    <TableCell colSpan={8} className="text-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                     </TableCell>
                   </TableRow>
                 ) : filteredGames?.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center">
-                      Nenhum jogo encontrado
+                    <TableCell colSpan={8} className="text-center py-8">
+                      <p className="text-muted-foreground">Nenhum jogo encontrado</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Configure a API Playfivers e clique em "Sincronizar" para importar jogos
+                      </p>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredGames?.map((game) => (
+                  filteredGames?.slice(0, 50).map((game) => (
                     <TableRow key={game.id}>
                       <TableCell>
                         <div className="flex items-center gap-3">
@@ -138,15 +167,27 @@ const Games = () => {
                               src={game.image}
                               alt={game.name}
                               className="h-10 w-10 rounded object-cover"
+                              onError={(e) => {
+                                e.currentTarget.src = "https://placehold.co/40x40/1a1a2e/ffffff?text=?";
+                              }}
                             />
                           )}
-                          <span className="font-medium">{game.name}</span>
+                          <div>
+                            <span className="font-medium">{game.name}</span>
+                            <p className="text-xs text-muted-foreground">{game.external_code}</p>
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {game.external_code}
+                        {getProviderName(game.provider_id)}
                       </TableCell>
-                      <TableCell>{game.rtp}%</TableCell>
+                      <TableCell>{game.rtp || 96}%</TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          {game.is_new && <Badge variant="secondary">Novo</Badge>}
+                          {game.is_live && <Badge variant="outline">Live</Badge>}
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <Switch
                           checked={game.is_active}
@@ -186,6 +227,11 @@ const Games = () => {
                 )}
               </TableBody>
             </Table>
+            {filteredGames && filteredGames.length > 50 && (
+              <p className="text-sm text-muted-foreground text-center mt-4">
+                Mostrando 50 de {filteredGames.length} jogos
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -198,6 +244,19 @@ const Games = () => {
           </DialogHeader>
           {selectedGame && (
             <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                {selectedGame.image && (
+                  <img
+                    src={selectedGame.image}
+                    alt={selectedGame.name}
+                    className="h-16 w-16 rounded-lg object-cover"
+                  />
+                )}
+                <div>
+                  <p className="font-medium">{selectedGame.name}</p>
+                  <p className="text-sm text-muted-foreground">{selectedGame.external_code}</p>
+                </div>
+              </div>
               <div className="space-y-2">
                 <Label>Nome</Label>
                 <Input
