@@ -3,20 +3,25 @@ export interface Game {
   code: string;
   name: string;
   provider: string;
-  providerId: number;
+  providerId: number | string;
   image: string;
   category: string;
-  isOriginal: boolean;
-  isLive: boolean;
-  isFeatured: boolean;
+  isOriginal?: boolean;
+  isLive?: boolean;
+  isFeatured?: boolean;
+  isNew?: boolean;
+  rtp?: number;
+  minBet?: number;
+  maxBet?: number;
+  externalCode?: string;
 }
 
 export interface Provider {
-  id: number;
+  id: number | string;
   name: string;
   slug: string;
   logo: string;
-  gameCount: number;
+  gameCount?: number;
 }
 
 export interface User {

@@ -1,1 +1,7 @@
 project_id = "jrzjnpfenudfsqjdrayp"
+
+[functions.playfivers]
+verify_jwt = false
+
+[functions.playfivers-webhook]
+verify_jwt = false

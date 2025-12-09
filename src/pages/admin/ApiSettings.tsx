@@ -6,12 +6,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useApiSettings, useUpdateApiSettings } from "@/hooks/useSettings";
-import { Save, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { useSyncGames } from "@/hooks/usePlayfivers";
+import { Save, Eye, EyeOff, AlertCircle, Download, Loader2, CheckCircle, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 const ApiSettings = () => {
   const { data: apiSettings, isLoading } = useApiSettings();
   const updateApiSettings = useUpdateApiSettings();
+  const syncGames = useSyncGames();
 
   const [showToken, setShowToken] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
@@ -25,6 +27,9 @@ const ApiSettings = () => {
     rtp_default: 97,
   });
 
+  // Generate webhook URL
+  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/playfivers-webhook`;
+
   useEffect(() => {
     const playfivers = apiSettings?.find((s) => s.provider === "playfivers");
     if (playfivers) {
@@ -32,12 +37,12 @@ const ApiSettings = () => {
         provider: "playfivers",
         agent_token: playfivers.agent_token || "",
         secret_key: playfivers.secret_key || "",
-        webhook_url: playfivers.webhook_url || "",
+        webhook_url: playfivers.webhook_url || webhookUrl,
         is_active: playfivers.is_active,
         rtp_default: playfivers.rtp_default || 97,
       });
     }
-  }, [apiSettings]);
+  }, [apiSettings, webhookUrl]);
 
   const handleSave = async () => {
     const existing = apiSettings?.find((s) => s.provider === "playfivers");
@@ -46,6 +51,15 @@ const ApiSettings = () => {
       id: existing?.id,
       ...formData,
     });
+  };
+
+  const handleSync = async () => {
+    await syncGames.mutateAsync();
+  };
+
+  const copyWebhookUrl = () => {
+    navigator.clipboard.writeText(webhookUrl);
+    toast.success("URL copiada!");
   };
 
   if (isLoading) {
@@ -58,41 +72,73 @@ const ApiSettings = () => {
     );
   }
 
+  const isConfigured = formData.agent_token && formData.secret_key;
+
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">Configurações da API</h2>
-          <p className="text-muted-foreground">Configure a integração com a Playfivers</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-foreground">Configurações da API</h2>
+            <p className="text-muted-foreground">Configure a integração com a Playfivers</p>
+          </div>
+          {isConfigured && (
+            <Button 
+              onClick={handleSync} 
+              disabled={syncGames.isPending}
+              variant="outline"
+            >
+              {syncGames.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              Sincronizar Jogos
+            </Button>
+          )}
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <img 
-                src="https://playfivers.com/favicon.ico" 
-                alt="Playfivers" 
-                className="h-6 w-6"
-                onError={(e) => { e.currentTarget.style.display = 'none' }}
-              />
-              Playfivers API
-            </CardTitle>
-            <CardDescription>
-              Configure suas credenciais da API Playfivers para habilitar os jogos
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex items-center justify-between p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <AlertCircle className="h-5 w-5 text-yellow-500" />
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <img 
+                    src="https://playfivers.com/favicon.ico" 
+                    alt="Playfivers" 
+                    className="h-6 w-6"
+                    onError={(e) => { e.currentTarget.style.display = 'none' }}
+                  />
+                </div>
                 <div>
-                  <p className="font-medium text-yellow-500">Importante</p>
-                  <p className="text-sm text-muted-foreground">
-                    Essas credenciais são necessárias para iniciar jogos e processar transações
-                  </p>
+                  <CardTitle>Playfivers API</CardTitle>
+                  <CardDescription>
+                    Configure suas credenciais para habilitar jogos
+                  </CardDescription>
                 </div>
               </div>
+              {isConfigured && (
+                <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span className="text-sm text-green-500">Configurado</span>
+                </div>
+              )}
             </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {!isConfigured && (
+              <div className="flex items-center justify-between p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="h-5 w-5 text-yellow-500" />
+                  <div>
+                    <p className="font-medium text-yellow-500">Configuração Necessária</p>
+                    <p className="text-sm text-muted-foreground">
+                      Preencha as credenciais para ativar a integração
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="grid gap-6">
               <div className="flex items-center justify-between">
@@ -159,17 +205,19 @@ const ApiSettings = () => {
               </div>
 
               <div className="space-y-2">
-                <Label>Webhook URL</Label>
-                <Input
-                  type="url"
-                  placeholder="https://seusite.com/api/webhook"
-                  value={formData.webhook_url}
-                  onChange={(e) =>
-                    setFormData({ ...formData, webhook_url: e.target.value })
-                  }
-                />
+                <Label>Webhook URL (para transações)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={webhookUrl}
+                    readOnly
+                    className="font-mono text-sm bg-secondary"
+                  />
+                  <Button variant="outline" size="icon" onClick={copyWebhookUrl}>
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  URL que receberá as notificações de transações da Playfivers
+                  Configure esta URL no painel da Playfivers para receber transações
                 </p>
               </div>
 
@@ -192,6 +240,9 @@ const ApiSettings = () => {
 
             <div className="flex justify-end">
               <Button onClick={handleSave} disabled={updateApiSettings.isPending}>
+                {updateApiSettings.isPending && (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                )}
                 <Save className="h-4 w-4 mr-2" />
                 Salvar Configurações
               </Button>
@@ -201,48 +252,56 @@ const ApiSettings = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle>Documentação da API</CardTitle>
+            <CardTitle>Instruções de Integração</CardTitle>
             <CardDescription>
-              Endpoints disponíveis para integração
+              Passos para configurar a integração completa
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="p-4 rounded-lg bg-secondary/50">
-                <code className="text-sm">
-                  <span className="text-green-500">POST</span>{" "}
-                  <span className="text-primary">/api/v2/game_launch</span>
-                </code>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Iniciar um jogo para o usuário
-                </p>
+              <div className="flex items-start gap-4 p-4 rounded-lg bg-secondary/50">
+                <div className="flex items-center justify-center h-8 w-8 rounded-full bg-primary text-primary-foreground font-bold text-sm">
+                  1
+                </div>
+                <div>
+                  <p className="font-medium">Configure as Credenciais</p>
+                  <p className="text-sm text-muted-foreground">
+                    Insira o Agent Token e Secret Key fornecidos pela Playfivers
+                  </p>
+                </div>
               </div>
-              <div className="p-4 rounded-lg bg-secondary/50">
-                <code className="text-sm">
-                  <span className="text-blue-500">GET</span>{" "}
-                  <span className="text-primary">/api/v2/games</span>
-                </code>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Listar todos os jogos disponíveis
-                </p>
+              <div className="flex items-start gap-4 p-4 rounded-lg bg-secondary/50">
+                <div className="flex items-center justify-center h-8 w-8 rounded-full bg-primary text-primary-foreground font-bold text-sm">
+                  2
+                </div>
+                <div>
+                  <p className="font-medium">Configure o Webhook</p>
+                  <p className="text-sm text-muted-foreground">
+                    Copie a URL do webhook acima e configure no painel Playfivers para receber transações
+                  </p>
+                </div>
               </div>
-              <div className="p-4 rounded-lg bg-secondary/50">
-                <code className="text-sm">
-                  <span className="text-blue-500">GET</span>{" "}
-                  <span className="text-primary">/api/v2/providers</span>
-                </code>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Listar todos os provedores
-                </p>
+              <div className="flex items-start gap-4 p-4 rounded-lg bg-secondary/50">
+                <div className="flex items-center justify-center h-8 w-8 rounded-full bg-primary text-primary-foreground font-bold text-sm">
+                  3
+                </div>
+                <div>
+                  <p className="font-medium">Sincronize os Jogos</p>
+                  <p className="text-sm text-muted-foreground">
+                    Clique em "Sincronizar Jogos" para importar todos os provedores e jogos
+                  </p>
+                </div>
               </div>
-              <div className="p-4 rounded-lg bg-secondary/50">
-                <code className="text-sm">
-                  <span className="text-green-500">POST</span>{" "}
-                  <span className="text-primary">/api/v2/free_bonus</span>
-                </code>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Conceder rodadas grátis ao jogador
-                </p>
+              <div className="flex items-start gap-4 p-4 rounded-lg bg-secondary/50">
+                <div className="flex items-center justify-center h-8 w-8 rounded-full bg-primary text-primary-foreground font-bold text-sm">
+                  4
+                </div>
+                <div>
+                  <p className="font-medium">Teste a Integração</p>
+                  <p className="text-sm text-muted-foreground">
+                    Faça login como usuário e inicie um jogo para verificar se tudo funciona
+                  </p>
+                </div>
               </div>
             </div>
           </CardContent>
