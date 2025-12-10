@@ -14,6 +14,7 @@ interface WebhookRequest {
   amount: number;
   transaction_id: string;
   secret_key?: string;
+  agent_token?: string;
 }
 
 serve(async (req) => {
@@ -28,10 +29,11 @@ serve(async (req) => {
     );
 
     const body: WebhookRequest = await req.json();
-    console.log("Webhook received:", body);
+    console.log("Webhook received:", JSON.stringify(body));
 
     // Validate required fields
-    if (!body.action || !body.user_code || !body.amount || !body.transaction_id) {
+    if (!body.action || !body.user_code || !body.transaction_id) {
+      console.error("Missing required fields");
       return new Response(
         JSON.stringify({ status: "error", msg: "Missing required fields" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -39,11 +41,28 @@ serve(async (req) => {
     }
 
     // Get API settings to validate secret key
-    const { data: apiSettings } = await supabase
+    const { data: apiSettings, error: settingsError } = await supabase
       .from("api_settings")
-      .select("secret_key")
+      .select("secret_key, agent_token")
       .eq("provider", "playfivers")
       .single();
+
+    if (settingsError || !apiSettings) {
+      console.error("API settings not found");
+      return new Response(
+        JSON.stringify({ status: "error", msg: "API not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // CRITICAL: Validate secret_key to prevent unauthorized transactions
+    if (body.secret_key && body.secret_key !== apiSettings.secret_key) {
+      console.error("Invalid secret_key provided");
+      return new Response(
+        JSON.stringify({ status: "error", msg: "Invalid credentials" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Get user profile
     const { data: profile, error: profileError } = await supabase
@@ -60,8 +79,17 @@ serve(async (req) => {
       );
     }
 
-    let newBalance = Number(profile.balance);
-    const amount = Number(body.amount);
+    let newBalance = Number(profile.balance) || 0;
+    const amount = Number(body.amount) || 0;
+
+    // Validate amount
+    if (amount < 0) {
+      console.error("Invalid amount:", amount);
+      return new Response(
+        JSON.stringify({ status: "error", msg: "Invalid amount", balance: newBalance }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Check for duplicate transaction
     const { data: existingTx } = await supabase
@@ -92,6 +120,7 @@ serve(async (req) => {
     // Process transaction based on action
     if (body.action === "bet") {
       if (newBalance < amount) {
+        console.log("Insufficient balance:", newBalance, "required:", amount);
         return new Response(
           JSON.stringify({ status: "error", msg: "Insufficient balance", balance: newBalance }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -101,7 +130,7 @@ serve(async (req) => {
       newBalance -= amount;
 
       // Create bet transaction
-      await supabase.from("transactions").insert({
+      const { error: txError } = await supabase.from("transactions").insert({
         user_id: profile.user_id,
         type: "bet",
         amount: -amount,
@@ -113,20 +142,28 @@ serve(async (req) => {
         metadata: { round_id: body.round_id, game_code: body.game_code },
       });
 
+      if (txError) {
+        console.error("Transaction insert error:", txError);
+      }
+
       // Update profile
-      await supabase
+      const { error: updateError } = await supabase
         .from("profiles")
         .update({ 
           balance: newBalance,
-          total_wagered: Number(profile.total_wagered) + amount,
+          total_wagered: (Number(profile.total_wagered) || 0) + amount,
         })
         .eq("id", profile.id);
+
+      if (updateError) {
+        console.error("Profile update error:", updateError);
+      }
 
     } else if (body.action === "win") {
       newBalance += amount;
 
       // Create win transaction
-      await supabase.from("transactions").insert({
+      const { error: txError } = await supabase.from("transactions").insert({
         user_id: profile.user_id,
         type: "win",
         amount: amount,
@@ -138,20 +175,28 @@ serve(async (req) => {
         metadata: { round_id: body.round_id, game_code: body.game_code },
       });
 
+      if (txError) {
+        console.error("Transaction insert error:", txError);
+      }
+
       // Update profile
-      await supabase
+      const { error: updateError } = await supabase
         .from("profiles")
         .update({ 
           balance: newBalance,
-          total_won: Number(profile.total_won) + amount,
+          total_won: (Number(profile.total_won) || 0) + amount,
         })
         .eq("id", profile.id);
+
+      if (updateError) {
+        console.error("Profile update error:", updateError);
+      }
 
     } else if (body.action === "refund" || body.action === "rollback") {
       newBalance += amount;
 
       // Create refund transaction
-      await supabase.from("transactions").insert({
+      const { error: txError } = await supabase.from("transactions").insert({
         user_id: profile.user_id,
         type: "refund",
         amount: amount,
@@ -163,11 +208,19 @@ serve(async (req) => {
         metadata: { round_id: body.round_id, game_code: body.game_code, action: body.action },
       });
 
+      if (txError) {
+        console.error("Transaction insert error:", txError);
+      }
+
       // Update profile
-      await supabase
+      const { error: updateError } = await supabase
         .from("profiles")
         .update({ balance: newBalance })
         .eq("id", profile.id);
+
+      if (updateError) {
+        console.error("Profile update error:", updateError);
+      }
     }
 
     console.log("Transaction processed:", body.action, "New balance:", newBalance);

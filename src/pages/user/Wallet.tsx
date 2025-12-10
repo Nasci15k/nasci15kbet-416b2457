@@ -2,11 +2,19 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Wallet as WalletIcon, ArrowUpRight, ArrowDownLeft, Gift, History } from "lucide-react";
+import { ArrowLeft, Wallet as WalletIcon, ArrowUpRight, ArrowDownLeft, Gift, History, Loader2 } from "lucide-react";
 
 const Wallet = () => {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   if (!user || !profile) {
     navigate("/auth");
@@ -17,22 +25,22 @@ const Wallet = () => {
   const bonusBalance = profile.bonus_balance || 0;
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-6">
+    <div className="min-h-screen bg-background text-foreground p-4 md:p-6">
       <div className="max-w-4xl mx-auto space-y-6">
         <Button
           variant="ghost"
-          className="gap-2"
+          className="gap-2 text-muted-foreground hover:text-foreground"
           onClick={() => navigate("/")}
         >
           <ArrowLeft className="w-4 h-4" />
           Voltar
         </Button>
 
-        <h1 className="text-3xl font-bold">Carteira</h1>
+        <h1 className="text-3xl font-bold text-foreground">Carteira</h1>
 
         {/* Balance Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Card className="border-border/50 bg-gradient-to-br from-primary/20 to-primary/5">
+          <Card className="border-border bg-gradient-to-br from-primary/20 to-primary/5">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                 <WalletIcon className="w-4 h-4" />
@@ -46,7 +54,7 @@ const Wallet = () => {
             </CardContent>
           </Card>
 
-          <Card className="border-border/50 bg-gradient-to-br from-casino-gold/20 to-casino-gold/5">
+          <Card className="border-border bg-gradient-to-br from-casino-gold/20 to-casino-gold/5">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                 <Gift className="w-4 h-4" />
@@ -64,7 +72,7 @@ const Wallet = () => {
         {/* Action Buttons */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Button
-            className="h-auto py-6 flex flex-col items-center gap-2 gradient-accent"
+            className="h-auto py-6 flex flex-col items-center gap-2 gradient-accent text-accent-foreground"
             onClick={() => navigate("/deposit")}
           >
             <ArrowDownLeft className="w-8 h-8" />
@@ -78,30 +86,30 @@ const Wallet = () => {
             onClick={() => navigate("/withdraw")}
           >
             <ArrowUpRight className="w-8 h-8 text-primary" />
-            <span className="text-lg font-semibold">Sacar</span>
+            <span className="text-lg font-semibold text-foreground">Sacar</span>
             <span className="text-sm text-muted-foreground">Retirar fundos</span>
           </Button>
 
           <Button
             variant="outline"
-            className="h-auto py-6 flex flex-col items-center gap-2 border-border/50 hover:bg-secondary"
+            className="h-auto py-6 flex flex-col items-center gap-2 border-border hover:bg-secondary"
             onClick={() => navigate("/transactions")}
           >
             <History className="w-8 h-8 text-muted-foreground" />
-            <span className="text-lg font-semibold">Histórico</span>
+            <span className="text-lg font-semibold text-foreground">Histórico</span>
             <span className="text-sm text-muted-foreground">Ver transações</span>
           </Button>
         </div>
 
         {/* VIP Info */}
-        <Card className="border-border/50">
+        <Card className="border-border bg-card">
           <CardHeader>
-            <CardTitle>Nível VIP</CardTitle>
+            <CardTitle className="text-card-foreground">Nível VIP</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-2xl font-bold">Nível {profile.vip_level || 0}</p>
+                <p className="text-2xl font-bold text-foreground">Nível {profile.vip_level || 0}</p>
                 <p className="text-sm text-muted-foreground">
                   {profile.vip_points || 0} pontos VIP
                 </p>

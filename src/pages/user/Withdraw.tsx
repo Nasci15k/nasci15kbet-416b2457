@@ -12,12 +12,12 @@ import { toast } from "sonner";
 
 const Withdraw = () => {
   const navigate = useNavigate();
-  const { user, profile, refreshProfile } = useAuth();
+  const { user, profile, refreshProfile, isLoading } = useAuth();
   
   const [amount, setAmount] = useState("");
   const [pixKeyType, setPixKeyType] = useState("");
   const [pixKey, setPixKey] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
   const handleWithdraw = async () => {
@@ -42,9 +42,8 @@ const Withdraw = () => {
       return;
     }
 
-    setIsLoading(true);
+    setIsProcessing(true);
     try {
-      // Create withdrawal record
       const { error: withdrawError } = await supabase
         .from("withdrawals")
         .insert({
@@ -57,7 +56,6 @@ const Withdraw = () => {
 
       if (withdrawError) throw withdrawError;
 
-      // Update user balance
       const { error: balanceError } = await supabase
         .from("profiles")
         .update({ 
@@ -74,9 +72,17 @@ const Withdraw = () => {
       console.error("Withdraw error:", error);
       toast.error("Erro ao solicitar saque: " + error.message);
     } finally {
-      setIsLoading(false);
+      setIsProcessing(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   if (!user || !profile) {
     navigate("/auth");
@@ -84,20 +90,19 @@ const Withdraw = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-6">
+    <div className="min-h-screen bg-background text-foreground p-4 md:p-6">
       <div className="max-w-lg mx-auto space-y-6">
         <Button
           variant="ghost"
-          className="gap-2"
+          className="gap-2 text-muted-foreground hover:text-foreground"
           onClick={() => navigate("/wallet")}
         >
           <ArrowLeft className="w-4 h-4" />
           Voltar
         </Button>
 
-        <h1 className="text-3xl font-bold">Sacar</h1>
+        <h1 className="text-3xl font-bold text-foreground">Sacar</h1>
 
-        {/* Balance Card */}
         <Card className="border-accent/50 bg-accent/10">
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Saldo disponível</p>
@@ -108,20 +113,20 @@ const Withdraw = () => {
         </Card>
 
         {!isSuccess ? (
-          <Card className="border-border/50">
+          <Card className="border-border bg-card">
             <CardHeader>
-              <CardTitle>Dados do Saque</CardTitle>
+              <CardTitle className="text-card-foreground">Dados do Saque</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="amount">Valor (R$)</Label>
+                <Label htmlFor="amount" className="text-foreground">Valor (R$)</Label>
                 <Input
                   id="amount"
                   type="number"
                   placeholder="0,00"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="text-xl h-12"
+                  className="text-xl h-12 bg-secondary border-border text-foreground"
                 />
                 <p className="text-sm text-muted-foreground">
                   Mínimo: R$ 20,00
@@ -129,12 +134,12 @@ const Withdraw = () => {
               </div>
 
               <div className="space-y-2">
-                <Label>Tipo de Chave PIX</Label>
+                <Label className="text-foreground">Tipo de Chave PIX</Label>
                 <Select value={pixKeyType} onValueChange={setPixKeyType}>
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-secondary border-border text-foreground">
                     <SelectValue placeholder="Selecione o tipo" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-popover border-border">
                     <SelectItem value="cpf">CPF</SelectItem>
                     <SelectItem value="email">Email</SelectItem>
                     <SelectItem value="phone">Telefone</SelectItem>
@@ -144,22 +149,23 @@ const Withdraw = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="pixKey">Chave PIX</Label>
+                <Label htmlFor="pixKey" className="text-foreground">Chave PIX</Label>
                 <Input
                   id="pixKey"
                   type="text"
                   placeholder="Digite sua chave PIX"
                   value={pixKey}
                   onChange={(e) => setPixKey(e.target.value)}
+                  className="bg-secondary border-border text-foreground"
                 />
               </div>
 
               <Button
                 className="w-full h-12 text-lg"
                 onClick={handleWithdraw}
-                disabled={isLoading || !amount || !pixKeyType || !pixKey}
+                disabled={isProcessing || !amount || !pixKeyType || !pixKey}
               >
-                {isLoading ? (
+                {isProcessing ? (
                   <>
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                     Processando...
@@ -171,7 +177,7 @@ const Withdraw = () => {
             </CardContent>
           </Card>
         ) : (
-          <Card className="border-accent/50">
+          <Card className="border-accent/50 bg-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-accent">
                 <CheckCircle className="w-5 h-5" />
@@ -181,7 +187,7 @@ const Withdraw = () => {
             <CardContent className="space-y-4 text-center">
               <div className="py-8">
                 <CheckCircle className="w-16 h-16 mx-auto text-accent mb-4" />
-                <p className="text-xl font-semibold">
+                <p className="text-xl font-semibold text-foreground">
                   R$ {parseFloat(amount).toFixed(2)}
                 </p>
                 <p className="text-muted-foreground mt-2">
@@ -189,9 +195,9 @@ const Withdraw = () => {
                 </p>
               </div>
 
-              <div className="bg-secondary/50 rounded-lg p-4 text-left">
+              <div className="bg-secondary rounded-lg p-4 text-left">
                 <p className="text-sm text-muted-foreground">Chave PIX</p>
-                <p className="font-mono">{pixKey}</p>
+                <p className="font-mono text-foreground">{pixKey}</p>
               </div>
 
               <Button
@@ -204,12 +210,12 @@ const Withdraw = () => {
           </Card>
         )}
 
-        <Card className="border-border/50 bg-secondary/30">
+        <Card className="border-border bg-secondary/30">
           <CardContent className="pt-6">
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-casino-gold mt-0.5" />
               <div>
-                <h3 className="font-semibold mb-1">Importante</h3>
+                <h3 className="font-semibold mb-1 text-foreground">Importante</h3>
                 <p className="text-sm text-muted-foreground">
                   Saques são processados em até 24 horas. A chave PIX deve estar em seu nome.
                 </p>
