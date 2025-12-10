@@ -11,7 +11,7 @@ import { ptBR } from "date-fns/locale";
 
 const Transactions = () => {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, isLoading: authLoading } = useAuth();
 
   const { data: transactions, isLoading } = useQuery({
     queryKey: ["user-transactions", user?.id],
@@ -29,11 +29,6 @@ const Transactions = () => {
     enabled: !!user,
   });
 
-  if (!user || !profile) {
-    navigate("/auth");
-    return null;
-  }
-
   const getTypeInfo = (type: string) => {
     switch (type) {
       case "deposit":
@@ -46,6 +41,8 @@ const Transactions = () => {
         return { label: "Ganho", icon: Gamepad2, color: "text-casino-gold" };
       case "bonus":
         return { label: "Bônus", icon: ArrowDownLeft, color: "text-casino-purple" };
+      case "refund":
+        return { label: "Reembolso", icon: ArrowDownLeft, color: "text-accent" };
       default:
         return { label: type, icon: ArrowDownLeft, color: "text-muted-foreground" };
     }
@@ -54,7 +51,7 @@ const Transactions = () => {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "completed":
-        return <Badge variant="default" className="bg-accent">Concluído</Badge>;
+        return <Badge className="bg-accent text-accent-foreground">Concluído</Badge>;
       case "pending":
         return <Badge variant="secondary">Pendente</Badge>;
       case "failed":
@@ -66,23 +63,36 @@ const Transactions = () => {
     }
   };
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user || !profile) {
+    navigate("/auth");
+    return null;
+  }
+
   return (
-    <div className="min-h-screen bg-background p-4 md:p-6">
+    <div className="min-h-screen bg-background text-foreground p-4 md:p-6">
       <div className="max-w-4xl mx-auto space-y-6">
         <Button
           variant="ghost"
-          className="gap-2"
+          className="gap-2 text-muted-foreground hover:text-foreground"
           onClick={() => navigate("/wallet")}
         >
           <ArrowLeft className="w-4 h-4" />
           Voltar
         </Button>
 
-        <h1 className="text-3xl font-bold">Histórico de Transações</h1>
+        <h1 className="text-3xl font-bold text-foreground">Histórico de Transações</h1>
 
-        <Card className="border-border/50">
+        <Card className="border-border bg-card">
           <CardHeader>
-            <CardTitle>Últimas transações</CardTitle>
+            <CardTitle className="text-card-foreground">Últimas transações</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -103,14 +113,14 @@ const Transactions = () => {
                   return (
                     <div
                       key={transaction.id}
-                      className="flex items-center justify-between p-4 bg-secondary/30 rounded-lg hover:bg-secondary/50 transition-colors"
+                      className="flex items-center justify-between p-4 bg-secondary rounded-lg hover:bg-secondary/80 transition-colors"
                     >
                       <div className="flex items-center gap-4">
-                        <div className={`p-2 rounded-full bg-secondary ${typeInfo.color}`}>
+                        <div className={`p-2 rounded-full bg-background ${typeInfo.color}`}>
                           <Icon className="w-5 h-5" />
                         </div>
                         <div>
-                          <p className="font-medium">{typeInfo.label}</p>
+                          <p className="font-medium text-foreground">{typeInfo.label}</p>
                           <p className="text-sm text-muted-foreground">
                             {format(new Date(transaction.created_at!), "dd 'de' MMM, HH:mm", { locale: ptBR })}
                           </p>
