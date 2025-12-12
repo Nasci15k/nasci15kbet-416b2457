@@ -15,7 +15,7 @@ interface PlayfiversRequest {
   gameOriginal?: boolean;
 }
 
-const BASE_URL = "https://www.playfiver.app";
+const BASE_URL = "https://api.playfiver.app";
 
 async function fetchPlayfivers(url: string, options: RequestInit = {}): Promise<{ ok: boolean; data?: any; error?: string }> {
   try {
