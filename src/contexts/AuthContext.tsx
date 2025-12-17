@@ -102,27 +102,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     let mounted = true;
 
     const init = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      setSession(session);
-      setUser(session?.user ?? null);
+        setSession(session);
+        setUser(session?.user ?? null);
 
-      if (session?.user) {
-        const [profileData, adminStatus] = await Promise.all([
-          ensureProfile(session.user),
-          checkIsAdmin(session.user.id),
-        ]);
-        if (mounted) {
-          setProfile(profileData);
-          setIsAdmin(adminStatus);
+        if (session?.user) {
+          const [profileData, adminStatus] = await Promise.all([
+            ensureProfile(session.user),
+            checkIsAdmin(session.user.id),
+          ]);
+          if (mounted) {
+            setProfile(profileData);
+            setIsAdmin(adminStatus);
+          }
         }
+      } catch (e) {
+        console.error("Auth init error:", e);
+        if (mounted) {
+          setProfile(null);
+          setIsAdmin(false);
+        }
+      } finally {
+        if (mounted) setIsLoading(false);
       }
-
-      if (mounted) setIsLoading(false);
     };
 
     init();
@@ -130,23 +138,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!mounted) return;
       setIsLoading(true);
-      setSession(session);
-      setUser(session?.user ?? null);
 
-      if (session?.user) {
-        const [profileData, adminStatus] = await Promise.all([
-          ensureProfile(session.user),
-          checkIsAdmin(session.user.id),
-        ]);
-        setProfile(profileData);
-        setIsAdmin(adminStatus);
-      } else {
-        setProfile(null);
-        setIsAdmin(false);
+      try {
+        setSession(session);
+        setUser(session?.user ?? null);
+
+        if (session?.user) {
+          const [profileData, adminStatus] = await Promise.all([
+            ensureProfile(session.user),
+            checkIsAdmin(session.user.id),
+          ]);
+          if (mounted) {
+            setProfile(profileData);
+            setIsAdmin(adminStatus);
+          }
+        } else {
+          setProfile(null);
+          setIsAdmin(false);
+        }
+      } catch (e) {
+        console.error("Auth state change error:", e);
+        if (mounted) {
+          setProfile(null);
+          setIsAdmin(false);
+        }
+      } finally {
+        if (mounted) setIsLoading(false);
       }
-
-      setIsLoading(false);
     });
 
     return () => {

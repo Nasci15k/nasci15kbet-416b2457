@@ -92,19 +92,23 @@ serve(async (req) => {
     }
 
     // Check for duplicate transaction
-    const { data: existingTx } = await supabase
+    const { data: existingTx, error: existingTxError } = await supabase
       .from("transactions")
       .select("id")
       .eq("reference_id", body.transaction_id)
-      .single();
+      .maybeSingle();
+
+    if (existingTxError) {
+      console.error("Duplicate check error:", existingTxError);
+    }
 
     if (existingTx) {
       console.log("Duplicate transaction:", body.transaction_id);
       return new Response(
-        JSON.stringify({ 
-          status: "success", 
+        JSON.stringify({
+          status: "success",
           msg: "Duplicate transaction",
-          balance: newBalance 
+          balance: newBalance,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

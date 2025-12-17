@@ -123,8 +123,8 @@ serve(async (req) => {
       console.log("Opening game for user:", profile.user_id, "Balance:", profile.balance);
 
       const requestBody = {
-        agentToken: agent_token,
-        secretKey: secret_key,
+        agent_token: agent_token,
+        secret_key: secret_key,
         user_code: profile.user_id,
         game_code: body.gameCode,
         provider: body.provider || game?.game_providers?.name || "",
@@ -210,10 +210,10 @@ serve(async (req) => {
     // ====== SYNC GAMES ======
     if (body.action === "syncGames") {
       console.log("Starting full sync with Playfivers...");
-      
-      // Get providers first (GET request)
+
+      // 1) Fetch providers
       const providersResult = await fetchPlayfivers(`${BASE_URL}/api/v2/providers`);
-      
+
       if (!providersResult.ok) {
         return new Response(
           JSON.stringify({ error: `Erro ao buscar provedores: ${providersResult.error}` }),
@@ -222,134 +222,140 @@ serve(async (req) => {
       }
 
       const providersData = providersResult.data;
-      console.log("Providers response:", JSON.stringify(providersData).substring(0, 500));
-      
+
       // API returns { status: 1, data: [...], msg: "" }
-      if (providersData?.status !== 1 || !providersData?.data) {
+      if (providersData?.status !== 1 || !Array.isArray(providersData?.data)) {
         console.error("Failed to fetch providers:", providersData);
         return new Response(
-          JSON.stringify({ 
-            error: `Falha ao buscar provedores. Resposta: ${JSON.stringify(providersData || {}).substring(0, 300)}` 
+          JSON.stringify({
+            error: `Falha ao buscar provedores. Resposta: ${JSON.stringify(providersData || {}).substring(0, 300)}`,
           }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      // Insert/update providers
-      let providersCount = 0;
-      for (const provider of providersData.data || []) {
-        const slug = (provider.name || `provider-${provider.id}`).toLowerCase().replace(/[^a-z0-9]+/g, "-");
-        
-        // Check if provider exists
-        const { data: existingProvider } = await supabase
-          .from("game_providers")
-          .select("id")
-          .eq("external_id", provider.id)
-          .maybeSingle();
+      const providerRows = providersData.data.map((p: any) => {
+        const slug = (p.name || `provider-${p.id}`)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
 
-        if (existingProvider) {
-          await supabase
-            .from("game_providers")
-            .update({
-              name: provider.name,
-              logo: provider.image_url || provider.image || null,
-              is_active: provider.status === 1,
-            })
-            .eq("external_id", provider.id);
-        } else {
-          await supabase
-            .from("game_providers")
-            .insert({
-              external_id: provider.id,
-              name: provider.name,
-              slug,
-              logo: provider.image_url || provider.image || null,
-              is_active: provider.status === 1,
-            });
-        }
-        providersCount++;
+        return {
+          external_id: p.id,
+          name: p.name,
+          slug,
+          logo: p.image_url || p.image || null,
+          is_active: p.status === 1,
+        };
+      });
+
+      const { error: upsertProvidersError } = await supabase
+        .from("game_providers")
+        .upsert(providerRows, { onConflict: "external_id" });
+
+      if (upsertProvidersError) {
+        console.error("Provider upsert error:", upsertProvidersError);
+        return new Response(
+          JSON.stringify({ error: `Erro ao salvar provedores: ${upsertProvidersError.message}` }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
 
+      const providersCount = providerRows.length;
       console.log("Providers synced:", providersCount);
 
-      // Get all games (GET request)
+      // 2) Build provider name -> id map (single query)
+      const { data: dbProviders, error: dbProvidersError } = await supabase
+        .from("game_providers")
+        .select("id,name,external_id");
+
+      if (dbProvidersError) {
+        console.error("DB providers fetch error:", dbProvidersError);
+        return new Response(
+          JSON.stringify({ error: `Erro ao ler provedores do banco: ${dbProvidersError.message}` }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const providerNameToId = new Map<string, string>();
+      for (const p of dbProviders || []) {
+        if (p?.name) providerNameToId.set(String(p.name).toLowerCase(), p.id);
+      }
+
+      // 3) Fetch games
       const gamesResult = await fetchPlayfivers(`${BASE_URL}/api/v2/games`);
-      
+
       if (!gamesResult.ok) {
         return new Response(
-          JSON.stringify({ 
-            success: true, 
-            message: `Provedores sincronizados (${providersCount}), mas erro ao buscar jogos: ${gamesResult.error}` 
+          JSON.stringify({
+            success: true,
+            message: `Provedores sincronizados (${providersCount}), mas erro ao buscar jogos: ${gamesResult.error}`,
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
       const gamesData = gamesResult.data;
-      console.log("Games response status:", gamesData?.status, "Count:", gamesData?.data?.length);
+      const gamesArray = Array.isArray(gamesData?.data) ? gamesData.data : [];
 
-      if (gamesData?.status !== 1 || !gamesData?.data) {
+      console.log("Games response status:", gamesData?.status, "Count:", gamesArray.length);
+
+      if (gamesData?.status !== 1 || gamesArray.length === 0) {
         return new Response(
-          JSON.stringify({ 
-            success: true, 
-            message: `Provedores sincronizados (${providersCount}), mas falha ao processar jogos.` 
+          JSON.stringify({
+            success: true,
+            message: `Provedores sincronizados (${providersCount}), mas falha ao processar jogos.`,
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      // Insert games
-      let totalGames = 0;
-      for (const game of gamesData.data) {
-        // Get provider from DB by name (API returns provider as object with name)
-        const providerName = game.provider?.name || game.provider || '';
-        const { data: dbProvider } = await supabase
-          .from("game_providers")
-          .select("id")
-          .ilike("name", providerName)
-          .maybeSingle();
+      // 4) Upsert games in batches (fast + avoids timeout)
+      const gameRows = gamesArray
+        .map((g: any) => {
+          const providerName = String(g?.provider?.name || g?.provider || "").toLowerCase();
+          const provider_id = providerNameToId.get(providerName) || null;
+          const external_code = String(g.game_code || g.id);
 
-        const gameCode = String(game.game_code || game.id);
-        
-        // Check if game exists
-        const { data: existingGame } = await supabase
+          return {
+            external_code,
+            name: g.name || g.game_name,
+            image: g.image_url || g.image || g.banner || null,
+            provider_id,
+            is_active: g.status === true || g.status === 1,
+            is_original: g.original ?? g.game_original ?? false,
+            rtp: g.rtp || null,
+          };
+        })
+        .filter((row: any) => row.external_code && row.name);
+
+      const chunkSize = 500;
+      for (let i = 0; i < gameRows.length; i += chunkSize) {
+        const chunk = gameRows.slice(i, i + chunkSize);
+        const { error: upsertGamesError } = await supabase
           .from("games")
-          .select("id")
-          .eq("external_code", gameCode)
-          .maybeSingle();
+          .upsert(chunk, { onConflict: "external_code" });
 
-        const gameData = {
-          name: game.name || game.game_name,
-          image: game.image_url || game.image || game.banner || null,
-          provider_id: dbProvider?.id || null,
-          is_active: game.status === true || game.status === 1,
-          is_original: game.original ?? game.game_original ?? false,
-          rtp: game.rtp || null,
-        };
-
-        if (existingGame) {
-          await supabase
-            .from("games")
-            .update(gameData)
-            .eq("external_code", gameCode);
-        } else {
-          await supabase
-            .from("games")
-            .insert({
-              external_code: gameCode,
-              ...gameData,
-            });
+        if (upsertGamesError) {
+          console.error("Games upsert error (chunk):", upsertGamesError);
+          return new Response(
+            JSON.stringify({
+              success: true,
+              message: `Provedores sincronizados (${providersCount}), mas erro ao salvar jogos: ${upsertGamesError.message}`,
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
         }
-        
-        totalGames++;
+
+        console.log(`Upserted games: ${Math.min(i + chunkSize, gameRows.length)}/${gameRows.length}`);
       }
 
-      console.log("Sync complete. Total games:", totalGames);
+      console.log("Sync complete. Total games:", gameRows.length);
 
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: `Sincronizado com sucesso! ${providersCount} provedores e ${totalGames} jogos.` 
+        JSON.stringify({
+          success: true,
+          message: `Sincronizado com sucesso! ${providersCount} provedores e ${gameRows.length} jogos.`,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
