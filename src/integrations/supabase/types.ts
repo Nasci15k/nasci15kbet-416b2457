@@ -599,6 +599,42 @@ export type Database = {
           },
         ]
       }
+      kyc_documents: {
+        Row: {
+          created_at: string | null
+          document_type: string
+          document_url: string
+          id: string
+          rejected_reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          document_type: string
+          document_url: string
+          id?: string
+          rejected_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          document_type?: string
+          document_url?: string
+          id?: string
+          rejected_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           action_url: string | null
@@ -737,11 +773,17 @@ export type Database = {
           balance: number | null
           blocked_reason: string | null
           bonus_balance: number | null
+          bonus_code: string | null
           cpf: string | null
           created_at: string | null
+          date_of_birth: string | null
           email: string
+          full_name: string | null
           id: string
           is_blocked: boolean | null
+          kyc_approved_at: string | null
+          kyc_approved_by: string | null
+          kyc_status: string | null
           name: string | null
           phone: string | null
           referral_code: string | null
@@ -760,11 +802,17 @@ export type Database = {
           balance?: number | null
           blocked_reason?: string | null
           bonus_balance?: number | null
+          bonus_code?: string | null
           cpf?: string | null
           created_at?: string | null
+          date_of_birth?: string | null
           email: string
+          full_name?: string | null
           id?: string
           is_blocked?: boolean | null
+          kyc_approved_at?: string | null
+          kyc_approved_by?: string | null
+          kyc_status?: string | null
           name?: string | null
           phone?: string | null
           referral_code?: string | null
@@ -783,11 +831,17 @@ export type Database = {
           balance?: number | null
           blocked_reason?: string | null
           bonus_balance?: number | null
+          bonus_code?: string | null
           cpf?: string | null
           created_at?: string | null
+          date_of_birth?: string | null
           email?: string
+          full_name?: string | null
           id?: string
           is_blocked?: boolean | null
+          kyc_approved_at?: string | null
+          kyc_approved_by?: string | null
+          kyc_status?: string | null
           name?: string | null
           phone?: string | null
           referral_code?: string | null
@@ -1117,6 +1171,72 @@ export type Database = {
           name?: string
           special_bonuses?: boolean | null
           withdrawal_priority?: boolean | null
+        }
+        Relationships: []
+      }
+      winners: {
+        Row: {
+          amount: number
+          created_at: string | null
+          game_image: string | null
+          game_name: string
+          id: string
+          is_active: boolean | null
+          is_manual: boolean | null
+          user_name: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          game_image?: string | null
+          game_name: string
+          id?: string
+          is_active?: boolean | null
+          is_manual?: boolean | null
+          user_name: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          game_image?: string | null
+          game_name?: string
+          id?: string
+          is_active?: boolean | null
+          is_manual?: boolean | null
+          user_name?: string
+        }
+        Relationships: []
+      }
+      winners_settings: {
+        Row: {
+          auto_generate: boolean | null
+          display_count: number | null
+          id: string
+          is_enabled: boolean | null
+          max_amount: number | null
+          min_amount: number | null
+          refresh_interval: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          auto_generate?: boolean | null
+          display_count?: number | null
+          id?: string
+          is_enabled?: boolean | null
+          max_amount?: number | null
+          min_amount?: number | null
+          refresh_interval?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          auto_generate?: boolean | null
+          display_count?: number | null
+          id?: string
+          is_enabled?: boolean | null
+          max_amount?: number | null
+          min_amount?: number | null
+          refresh_interval?: number | null
+          updated_at?: string | null
         }
         Relationships: []
       }

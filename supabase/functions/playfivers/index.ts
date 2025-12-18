@@ -15,13 +15,17 @@ interface PlayfiversRequest {
   gameOriginal?: boolean;
 }
 
+// Use proxy for API calls
+const PROXY_URL = "https://proxycassino.onrender.com";
 const BASE_URL = "https://api.playfivers.com";
 
 async function fetchPlayfivers(url: string, options: RequestInit = {}): Promise<{ ok: boolean; data?: any; error?: string }> {
   try {
-    console.log("Fetching:", url, "Method:", options.method || "GET");
+    // Route through proxy
+    const proxyUrl = `${PROXY_URL}/proxy?url=${encodeURIComponent(url)}`;
+    console.log("Fetching via proxy:", proxyUrl, "Method:", options.method || "GET");
     
-    const response = await fetch(url, {
+    const response = await fetch(proxyUrl, {
       ...options,
       headers: {
         "Content-Type": "application/json",
@@ -134,7 +138,7 @@ serve(async (req) => {
         lang: "pt",
       };
 
-      console.log("Playfivers request:", JSON.stringify({ ...requestBody, secretKey: "[HIDDEN]" }));
+      console.log("Playfivers request:", JSON.stringify({ ...requestBody, secret_key: "[HIDDEN]" }));
 
       const result = await fetchPlayfivers(`${BASE_URL}/api/v2/game_launch`, {
         method: "POST",
@@ -209,7 +213,7 @@ serve(async (req) => {
 
     // ====== SYNC GAMES ======
     if (body.action === "syncGames") {
-      console.log("Starting full sync with Playfivers...");
+      console.log("Starting full sync with Playfivers via proxy...");
 
       // 1) Fetch providers
       const providersResult = await fetchPlayfivers(`${BASE_URL}/api/v2/providers`);
@@ -282,36 +286,51 @@ serve(async (req) => {
         if (p?.name) providerNameToId.set(String(p.name).toLowerCase(), p.id);
       }
 
-      // 3) Fetch games
-      const gamesResult = await fetchPlayfivers(`${BASE_URL}/api/v2/games`);
+      // 3) Fetch games - using pagination to get ALL games
+      let allGames: any[] = [];
+      let page = 1;
+      let hasMore = true;
+      
+      while (hasMore) {
+        const gamesResult = await fetchPlayfivers(`${BASE_URL}/api/v2/games?page=${page}&limit=1000`);
 
-      if (!gamesResult.ok) {
-        return new Response(
-          JSON.stringify({
-            success: true,
-            message: `Provedores sincronizados (${providersCount}), mas erro ao buscar jogos: ${gamesResult.error}`,
-          }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        if (!gamesResult.ok) {
+          console.error("Error fetching games page", page, gamesResult.error);
+          break;
+        }
+
+        const gamesData = gamesResult.data;
+        const gamesArray = Array.isArray(gamesData?.data) ? gamesData.data : [];
+        
+        console.log(`Games page ${page}: status=${gamesData?.status}, count=${gamesArray.length}`);
+        
+        if (gamesArray.length === 0) {
+          hasMore = false;
+        } else {
+          allGames = [...allGames, ...gamesArray];
+          page++;
+          
+          // Safety: stop if we've gotten a reasonable amount
+          if (allGames.length >= 10000 || gamesArray.length < 1000) {
+            hasMore = false;
+          }
+        }
       }
 
-      const gamesData = gamesResult.data;
-      const gamesArray = Array.isArray(gamesData?.data) ? gamesData.data : [];
+      console.log("Total games fetched:", allGames.length);
 
-      console.log("Games response status:", gamesData?.status, "Count:", gamesArray.length);
-
-      if (gamesData?.status !== 1 || gamesArray.length === 0) {
+      if (allGames.length === 0) {
         return new Response(
           JSON.stringify({
             success: true,
-            message: `Provedores sincronizados (${providersCount}), mas falha ao processar jogos.`,
+            message: `Provedores sincronizados (${providersCount}), mas nenhum jogo encontrado.`,
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
       // 4) Upsert games in batches (fast + avoids timeout)
-      const gameRows = gamesArray
+      const gameRows = allGames
         .map((g: any) => {
           const providerName = String(g?.provider?.name || g?.provider || "").toLowerCase();
           const provider_id = providerNameToId.get(providerName) || null;

@@ -169,7 +169,7 @@ const Index = () => {
             activeCategory={activeCategory}
             onCategoryChange={setActiveCategory}
           />
-          <WinnersSection winners={mockWinners} />
+          <WinnersSection />
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold text-foreground">
