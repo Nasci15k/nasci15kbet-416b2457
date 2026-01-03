@@ -167,44 +167,50 @@ serve(async (req) => {
     // ====== GET PROVIDERS ======
     if (body.action === "getProviders") {
       console.log("Fetching providers from Playfivers...");
-      
-      const result = await fetchPlayfivers(`${BASE_URL}/api/v2/providers`);
-      
+
+      const result = await fetchPlayfivers(`${BASE_URL}/api/v2/providers`, {
+        method: "POST",
+        body: JSON.stringify({ agent_token, secret_key }),
+      });
+
       if (!result.ok) {
         return new Response(
           JSON.stringify({ error: result.error }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      
-      return new Response(
-        JSON.stringify(result.data),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+
+      return new Response(JSON.stringify(result.data), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // ====== GET GAMES ======
     if (body.action === "getGames") {
       console.log("Fetching games from provider:", body.providerId);
-      
-      let url = `${BASE_URL}/api/v2/games`;
-      if (body.providerId) {
-        url += `?provider=${body.providerId}`;
-      }
-      
-      const result = await fetchPlayfivers(url);
-      
+
+      const payload: Record<string, unknown> = {
+        agent_token,
+        secret_key,
+      };
+
+      if (body.providerId) payload.provider = body.providerId;
+
+      const result = await fetchPlayfivers(`${BASE_URL}/api/v2/games`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
       if (!result.ok) {
         return new Response(
           JSON.stringify({ error: result.error }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      
-      return new Response(
-        JSON.stringify(result.data),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+
+      return new Response(JSON.stringify(result.data), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // ====== SYNC GAMES ======
@@ -212,7 +218,10 @@ serve(async (req) => {
       console.log("Starting full sync with Playfivers via proxy...");
 
       // 1) Fetch providers
-      const providersResult = await fetchPlayfivers(`${BASE_URL}/api/v2/providers`);
+      const providersResult = await fetchPlayfivers(`${BASE_URL}/api/v2/providers`, {
+        method: "POST",
+        body: JSON.stringify({ agent_token, secret_key }),
+      });
 
       if (!providersResult.ok) {
         return new Response(
@@ -288,7 +297,15 @@ serve(async (req) => {
       let hasMore = true;
       
       while (hasMore) {
-        const gamesResult = await fetchPlayfivers(`${BASE_URL}/api/v2/games?page=${page}&limit=1000`);
+        const gamesResult = await fetchPlayfivers(`${BASE_URL}/api/v2/games`, {
+          method: "POST",
+          body: JSON.stringify({
+            agent_token,
+            secret_key,
+            page,
+            limit: 1000,
+          }),
+        });
 
         if (!gamesResult.ok) {
           console.error("Error fetching games page", page, gamesResult.error);
