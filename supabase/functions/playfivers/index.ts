@@ -15,17 +15,14 @@ interface PlayfiversRequest {
   gameOriginal?: boolean;
 }
 
-// Use proxy for API calls
-const PROXY_URL = "https://proxycassino.onrender.com";
+// Direct API calls (Edge functions don't have CORS restrictions)
 const BASE_URL = "https://api.playfivers.com";
 
 async function fetchPlayfivers(url: string, options: RequestInit = {}): Promise<{ ok: boolean; data?: any; error?: string }> {
   try {
-    // Route through proxy
-    const proxyUrl = `${PROXY_URL}/proxy?url=${encodeURIComponent(url)}`;
-    console.log("Fetching via proxy:", proxyUrl, "Method:", options.method || "GET");
+    console.log("Fetching:", url, "Method:", options.method || "GET");
     
-    const response = await fetch(proxyUrl, {
+    const response = await fetch(url, {
       ...options,
       headers: {
         "Content-Type": "application/json",
@@ -33,11 +30,10 @@ async function fetchPlayfivers(url: string, options: RequestInit = {}): Promise<
       },
     });
 
-    const contentType = response.headers.get("content-type") || "";
     const responseText = await response.text();
     
-    console.log("Response status:", response.status, "Content-Type:", contentType);
-    console.log("Response preview:", responseText.substring(0, 500));
+    console.log("Response status:", response.status);
+    console.log("Response preview:", responseText.substring(0, 300));
 
     if (!response.ok) {
       return { ok: false, error: `HTTP ${response.status}: ${responseText.substring(0, 200)}` };
