@@ -213,7 +213,7 @@ const KYCVerification = () => {
 
   if (isLoading) {
     return (
-      <UserLayout>
+      <UserLayout title="Verificação KYC">
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin" />
         </div>
@@ -222,7 +222,7 @@ const KYCVerification = () => {
   }
 
   return (
-    <UserLayout>
+    <UserLayout title="Verificação KYC">
       <div className="space-y-6">
         <div className="flex items-center gap-3">
           <ShieldCheck className="h-6 w-6 text-primary" />
