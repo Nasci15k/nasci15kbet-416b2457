@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { useCreateWithdrawal } from "@/hooks/useS6XPay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,8 +17,14 @@ const Withdraw = () => {
   const [amount, setAmount] = useState("");
   const [pixKeyType, setPixKeyType] = useState("");
   const [pixKey, setPixKey] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
+  const [withdrawalData, setWithdrawalData] = useState<{
+    id: string;
+    amount: number;
+    fee: number;
+    net_amount: number;
+  } | null>(null);
+
+  const createWithdrawal = useCreateWithdrawal();
 
   const handleWithdraw = async () => {
     if (!user || !profile) {
@@ -27,8 +33,13 @@ const Withdraw = () => {
     }
 
     const withdrawAmount = parseFloat(amount);
-    if (isNaN(withdrawAmount) || withdrawAmount < 20) {
-      toast.error("Valor mínimo de saque é R$ 20,00");
+    if (isNaN(withdrawAmount) || withdrawAmount < 10) {
+      toast.error("Valor mínimo de saque é R$ 10,00");
+      return;
+    }
+
+    if (withdrawAmount > 900) {
+      toast.error("Valor máximo de saque é R$ 900,00");
       return;
     }
 
@@ -42,39 +53,30 @@ const Withdraw = () => {
       return;
     }
 
-    setIsProcessing(true);
     try {
-      const { error: withdrawError } = await supabase
-        .from("withdrawals")
-        .insert({
-          user_id: user.id,
-          amount: withdrawAmount,
-          status: "pending",
-          pix_key_type: pixKeyType,
-          pix_key: pixKey,
-        });
-
-      if (withdrawError) throw withdrawError;
-
-      const { error: balanceError } = await supabase
-        .from("profiles")
-        .update({ 
-          balance: (profile.balance || 0) - withdrawAmount 
-        })
-        .eq("user_id", user.id);
-
-      if (balanceError) throw balanceError;
-
+      const result = await createWithdrawal.mutateAsync({
+        amount: withdrawAmount,
+        pix_key: pixKey,
+        pix_key_type: pixKeyType,
+      });
+      
+      setWithdrawalData(result.withdrawal);
       await refreshProfile();
-      setIsSuccess(true);
       toast.success("Saque solicitado com sucesso!");
     } catch (error: any) {
       console.error("Withdraw error:", error);
-      toast.error("Erro ao solicitar saque: " + error.message);
-    } finally {
-      setIsProcessing(false);
     }
   };
+
+  // Calculate estimated fee
+  const calculateFee = (value: number) => {
+    if (!value || value < 10) return 0;
+    return 1 + (value * 0.02); // R$ 1.00 + 2%
+  };
+
+  const withdrawAmount = parseFloat(amount) || 0;
+  const estimatedFee = calculateFee(withdrawAmount);
+  const netAmount = withdrawAmount > 0 ? withdrawAmount - estimatedFee : 0;
 
   if (isLoading) {
     return (
@@ -111,7 +113,7 @@ const Withdraw = () => {
           </CardContent>
         </Card>
 
-        {!isSuccess ? (
+        {!withdrawalData ? (
           <Card className="border-border bg-card">
             <CardHeader>
               <CardTitle className="text-card-foreground">Dados do Saque</CardTitle>
@@ -128,9 +130,26 @@ const Withdraw = () => {
                   className="text-xl h-12 bg-secondary border-border text-foreground"
                 />
                 <p className="text-sm text-muted-foreground">
-                  Mínimo: R$ 20,00
+                  Mínimo: R$ 10,00 | Máximo: R$ 900,00
                 </p>
               </div>
+
+              {withdrawAmount >= 10 && (
+                <div className="bg-secondary/50 rounded-lg p-3 space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Valor solicitado:</span>
+                    <span className="text-foreground">R$ {withdrawAmount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Taxa (R$ 1,00 + 2%):</span>
+                    <span className="text-destructive">- R$ {estimatedFee.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-semibold border-t border-border pt-1">
+                    <span className="text-foreground">Valor a receber:</span>
+                    <span className="text-accent">R$ {netAmount.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label className="text-foreground">Tipo de Chave PIX</Label>
@@ -140,6 +159,7 @@ const Withdraw = () => {
                   </SelectTrigger>
                   <SelectContent className="bg-popover border-border">
                     <SelectItem value="cpf">CPF</SelectItem>
+                    <SelectItem value="cnpj">CNPJ</SelectItem>
                     <SelectItem value="email">Email</SelectItem>
                     <SelectItem value="phone">Telefone</SelectItem>
                     <SelectItem value="random">Chave Aleatória</SelectItem>
@@ -162,9 +182,9 @@ const Withdraw = () => {
               <Button
                 className="w-full h-12 text-lg"
                 onClick={handleWithdraw}
-                disabled={isProcessing || !amount || !pixKeyType || !pixKey}
+                disabled={createWithdrawal.isPending || !amount || !pixKeyType || !pixKey}
               >
-                {isProcessing ? (
+                {createWithdrawal.isPending ? (
                   <>
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                     Processando...
@@ -187,11 +207,26 @@ const Withdraw = () => {
               <div className="py-8">
                 <CheckCircle className="w-16 h-16 mx-auto text-accent mb-4" />
                 <p className="text-xl font-semibold text-foreground">
-                  R$ {parseFloat(amount).toFixed(2)}
+                  R$ {withdrawalData.net_amount.toFixed(2)}
                 </p>
                 <p className="text-muted-foreground mt-2">
                   Seu saque foi solicitado com sucesso!
                 </p>
+              </div>
+
+              <div className="bg-secondary rounded-lg p-4 text-left space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Valor solicitado:</span>
+                  <span className="text-foreground">R$ {withdrawalData.amount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Taxa:</span>
+                  <span className="text-destructive">- R$ {withdrawalData.fee.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between font-semibold border-t border-border pt-2">
+                  <span className="text-foreground">Valor a receber:</span>
+                  <span className="text-accent">R$ {withdrawalData.net_amount.toFixed(2)}</span>
+                </div>
               </div>
 
               <div className="bg-secondary rounded-lg p-4 text-left">
@@ -215,9 +250,12 @@ const Withdraw = () => {
               <AlertCircle className="w-5 h-5 text-casino-gold mt-0.5" />
               <div>
                 <h3 className="font-semibold mb-1 text-foreground">Importante</h3>
-                <p className="text-sm text-muted-foreground">
-                  Saques são processados em até 24 horas. A chave PIX deve estar em seu nome.
-                </p>
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  <li>• Taxa de saque: R$ 1,00 + 2% do valor</li>
+                  <li>• Valor mínimo: R$ 10,00 | Máximo: R$ 900,00</li>
+                  <li>• A chave PIX deve estar em seu nome</li>
+                  <li>• Processamento em até 24 horas</li>
+                </ul>
               </div>
             </div>
           </CardContent>
