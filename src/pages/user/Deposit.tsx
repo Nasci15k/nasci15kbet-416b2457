@@ -1,23 +1,55 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { useCreateDeposit, useCheckDepositStatus } from "@/hooks/useS6XPay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, QrCode, Copy, Loader2, CheckCircle } from "lucide-react";
+import { ArrowLeft, QrCode, Copy, Loader2, CheckCircle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 const Deposit = () => {
   const navigate = useNavigate();
-  const { user, profile, isLoading } = useAuth();
+  const { user, profile, refreshProfile, isLoading } = useAuth();
   
   const [amount, setAmount] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [pixCode, setPixCode] = useState<string | null>(null);
+  const [depositData, setDepositData] = useState<{
+    id: string;
+    pix_code: string;
+    qr_code_base64: string;
+    expires_at: string;
+  } | null>(null);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
 
-  const quickAmounts = [20, 50, 100, 200, 500, 1000];
+  const createDeposit = useCreateDeposit();
+  const checkStatus = useCheckDepositStatus();
+
+  const quickAmounts = [20, 50, 100, 200, 500, 800];
+
+  // Auto-check deposit status every 10 seconds
+  useEffect(() => {
+    if (!depositData) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const result = await checkStatus.mutateAsync(depositData.id);
+        if (result.status === "completed") {
+          toast.success("Depósito confirmado! Saldo atualizado.");
+          await refreshProfile();
+          setDepositData(null);
+          setAmount("");
+        } else if (result.status === "failed" || result.status === "expired") {
+          toast.error("Depósito expirado. Gere um novo PIX.");
+          setDepositData(null);
+        }
+      } catch (error) {
+        console.error("Error checking deposit status:", error);
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [depositData, checkStatus, refreshProfile]);
 
   const handleDeposit = async () => {
     if (!user) {
@@ -26,45 +58,53 @@ const Deposit = () => {
     }
 
     const depositAmount = parseFloat(amount);
-    if (isNaN(depositAmount) || depositAmount < 10) {
-      toast.error("Valor mínimo de depósito é R$ 10,00");
+    if (isNaN(depositAmount) || depositAmount < 8) {
+      toast.error("Valor mínimo de depósito é R$ 8,00");
       return;
     }
 
-    if (depositAmount > 50000) {
-      toast.error("Valor máximo de depósito é R$ 50.000,00");
+    if (depositAmount > 899) {
+      toast.error("Valor máximo de depósito é R$ 899,00");
       return;
     }
 
-    setIsProcessing(true);
     try {
-      const { data: deposit, error } = await supabase
-        .from("deposits")
-        .insert({
-          user_id: user.id,
-          amount: depositAmount,
-          status: "pending",
-          pix_code: `PIX${Date.now()}${Math.random().toString(36).substring(7)}`.toUpperCase(),
-          expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setPixCode(deposit.pix_code);
+      const result = await createDeposit.mutateAsync({ amount: depositAmount });
+      setDepositData(result.deposit);
       toast.success("PIX gerado com sucesso!");
     } catch (error: any) {
       console.error("Deposit error:", error);
-      toast.error("Erro ao gerar PIX: " + error.message);
+    }
+  };
+
+  const handleCheckStatus = async () => {
+    if (!depositData) return;
+    
+    setIsCheckingStatus(true);
+    try {
+      const result = await checkStatus.mutateAsync(depositData.id);
+      if (result.status === "completed") {
+        toast.success("Depósito confirmado! Saldo atualizado.");
+        await refreshProfile();
+        setDepositData(null);
+        setAmount("");
+      } else if (result.status === "failed" || result.status === "expired") {
+        toast.error("Depósito expirado. Gere um novo PIX.");
+        setDepositData(null);
+      } else {
+        toast.info("Aguardando pagamento...");
+      }
+    } catch (error: any) {
+      console.error("Check status error:", error);
+      toast.error("Erro ao verificar status");
     } finally {
-      setIsProcessing(false);
+      setIsCheckingStatus(false);
     }
   };
 
   const copyPixCode = () => {
-    if (pixCode) {
-      navigator.clipboard.writeText(pixCode);
+    if (depositData?.pix_code) {
+      navigator.clipboard.writeText(depositData.pix_code);
       toast.success("Código PIX copiado!");
     }
   };
@@ -95,7 +135,7 @@ const Deposit = () => {
 
         <h1 className="text-3xl font-bold text-foreground">Depositar</h1>
 
-        {!pixCode ? (
+        {!depositData ? (
           <Card className="border-border bg-card">
             <CardHeader>
               <CardTitle className="text-card-foreground">Valor do Depósito</CardTitle>
@@ -112,7 +152,7 @@ const Deposit = () => {
                   className="text-2xl h-14 bg-secondary border-border text-foreground"
                 />
                 <p className="text-sm text-muted-foreground">
-                  Mínimo: R$ 10,00 | Máximo: R$ 50.000,00
+                  Mínimo: R$ 8,00 | Máximo: R$ 899,00
                 </p>
               </div>
 
@@ -132,9 +172,9 @@ const Deposit = () => {
               <Button
                 className="w-full h-14 text-lg gradient-accent text-accent-foreground"
                 onClick={handleDeposit}
-                disabled={isProcessing || !amount}
+                disabled={createDeposit.isPending || !amount}
               >
-                {isProcessing ? (
+                {createDeposit.isPending ? (
                   <>
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                     Gerando PIX...
@@ -158,7 +198,15 @@ const Deposit = () => {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="bg-secondary rounded-lg p-6 text-center">
-                <QrCode className="w-32 h-32 mx-auto mb-4 text-muted-foreground" />
+                {depositData.qr_code_base64 ? (
+                  <img 
+                    src={`data:image/png;base64,${depositData.qr_code_base64}`}
+                    alt="QR Code PIX"
+                    className="w-48 h-48 mx-auto mb-4"
+                  />
+                ) : (
+                  <QrCode className="w-32 h-32 mx-auto mb-4 text-muted-foreground" />
+                )}
                 <p className="text-sm text-muted-foreground mb-2">
                   Escaneie o QR Code ou copie o código
                 </p>
@@ -168,9 +216,9 @@ const Deposit = () => {
                 <Label className="text-foreground">Código PIX Copia e Cola</Label>
                 <div className="flex gap-2">
                   <Input
-                    value={pixCode}
+                    value={depositData.pix_code}
                     readOnly
-                    className="font-mono text-sm bg-secondary border-border text-foreground"
+                    className="font-mono text-xs bg-secondary border-border text-foreground"
                   />
                   <Button variant="outline" size="icon" onClick={copyPixCode} className="border-border">
                     <Copy className="w-4 h-4" />
@@ -187,11 +235,33 @@ const Deposit = () => {
                 </p>
               </div>
 
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={handleCheckStatus}
+                disabled={isCheckingStatus}
+              >
+                {isCheckingStatus ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Verificando...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Já paguei, verificar status
+                  </>
+                )}
+              </Button>
+
               <div className="flex gap-2">
                 <Button
                   variant="outline"
                   className="flex-1 border-border"
-                  onClick={() => setPixCode(null)}
+                  onClick={() => {
+                    setDepositData(null);
+                    setAmount("");
+                  }}
                 >
                   Novo Depósito
                 </Button>
@@ -210,11 +280,11 @@ const Deposit = () => {
           <CardContent className="pt-6">
             <h3 className="font-semibold mb-2 text-foreground">Como funciona:</h3>
             <ol className="text-sm text-muted-foreground space-y-2">
-              <li>1. Digite o valor desejado</li>
+              <li>1. Digite o valor desejado (R$ 8 a R$ 899)</li>
               <li>2. Clique em "Gerar PIX"</li>
               <li>3. Copie o código ou escaneie o QR Code</li>
               <li>4. Pague no app do seu banco</li>
-              <li>5. Saldo creditado em segundos!</li>
+              <li>5. Saldo creditado automaticamente!</li>
             </ol>
           </CardContent>
         </Card>

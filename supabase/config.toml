@@ -1,1 +1,7 @@
 project_id = "yhpmofsqgmuxukaegucw"
+
+[functions.s6xpay]
+verify_jwt = false
+
+[functions.s6xpay-webhook]
+verify_jwt = false
