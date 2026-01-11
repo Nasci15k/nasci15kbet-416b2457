@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 interface PlayfiversRequest {
-  action: "getGameUrl" | "getBalance" | "getProviders" | "getGames" | "syncGames";
+  action: "getGameUrl" | "getBalance" | "getProviders" | "getGames" | "syncGames" | "getOutboundIP";
   gameCode?: string;
   userId?: string;
   providerId?: number;
@@ -88,6 +88,72 @@ serve(async (req) => {
 
     const body: PlayfiversRequest = await req.json();
     console.log("Action requested:", body.action);
+
+    // ====== GET OUTBOUND IP ======
+    if (body.action === "getOutboundIP") {
+      try {
+        // Use multiple IP detection services for reliability
+        const ipServices = [
+          "https://api.ipify.org?format=json",
+          "https://ipinfo.io/json",
+          "https://api.myip.com",
+        ];
+
+        let detectedIP: string | null = null;
+        let lastError: Error | null = null;
+
+        for (const service of ipServices) {
+          try {
+            const response = await fetch(service, {
+              headers: { "Accept": "application/json" },
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              detectedIP = data.ip || data.IP || null;
+              if (detectedIP) {
+                console.log(`IP detected from ${service}: ${detectedIP}`);
+                break;
+              }
+            }
+          } catch (err) {
+            lastError = err instanceof Error ? err : new Error(String(err));
+            console.log(`Failed to get IP from ${service}:`, err);
+          }
+        }
+
+        if (detectedIP) {
+          // Save IP to database for history
+          await supabase.from("system_settings").upsert({
+            key: "last_outbound_ip",
+            value: { ip: detectedIP, detected_at: new Date().toISOString() },
+            category: "network",
+            description: "Último IP de saída detectado das Edge Functions",
+          }, { onConflict: "key" });
+
+          return new Response(
+            JSON.stringify({ 
+              success: true, 
+              ip: detectedIP,
+              detected_at: new Date().toISOString(),
+              warning: "Este IP pode mudar a qualquer momento. Edge Functions usam IPs dinâmicos."
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ error: "Não foi possível detectar o IP", details: lastError?.message }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      } catch (error) {
+        console.error("IP detection error:", error);
+        return new Response(
+          JSON.stringify({ error: "Erro ao detectar IP" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
 
     // ====== GET GAME URL ======
     if (body.action === "getGameUrl") {
