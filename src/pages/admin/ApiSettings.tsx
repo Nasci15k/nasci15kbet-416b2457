@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useApiSettings, useUpdateApiSettings } from "@/hooks/useSettings";
 import { useSyncGames } from "@/hooks/usePlayfivers";
-import { Save, Eye, EyeOff, AlertCircle, Download, Loader2, CheckCircle, Copy } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Save, Eye, EyeOff, AlertCircle, Download, Loader2, CheckCircle, Copy, Globe, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 const ApiSettings = () => {
@@ -17,6 +18,9 @@ const ApiSettings = () => {
 
   const [showToken, setShowToken] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
+  const [currentIP, setCurrentIP] = useState<string | null>(null);
+  const [ipDetectedAt, setIpDetectedAt] = useState<string | null>(null);
+  const [isLoadingIP, setIsLoadingIP] = useState(false);
   
   const [formData, setFormData] = useState({
     provider: "playfivers",
@@ -61,6 +65,58 @@ const ApiSettings = () => {
     navigator.clipboard.writeText(webhookUrl);
     toast.success("URL copiada!");
   };
+
+  const copyIP = () => {
+    if (currentIP) {
+      navigator.clipboard.writeText(currentIP);
+      toast.success("IP copiado!");
+    }
+  };
+
+  const detectIP = async () => {
+    setIsLoadingIP(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("playfivers", {
+        body: { action: "getOutboundIP" },
+      });
+
+      if (error) {
+        toast.error("Erro ao detectar IP: " + error.message);
+        return;
+      }
+
+      if (data.success) {
+        setCurrentIP(data.ip);
+        setIpDetectedAt(data.detected_at);
+        toast.success(`IP detectado: ${data.ip}`);
+        toast.warning("Atenção: Este IP pode mudar a qualquer momento!", { duration: 5000 });
+      } else {
+        toast.error(data.error || "Erro ao detectar IP");
+      }
+    } catch (error: any) {
+      toast.error("Erro ao detectar IP: " + error.message);
+    } finally {
+      setIsLoadingIP(false);
+    }
+  };
+
+  // Load last saved IP on mount
+  useEffect(() => {
+    const loadLastIP = async () => {
+      const { data } = await supabase
+        .from("system_settings")
+        .select("value")
+        .eq("key", "last_outbound_ip")
+        .maybeSingle();
+      
+      if (data?.value) {
+        const ipData = data.value as { ip: string; detected_at: string };
+        setCurrentIP(ipData.ip);
+        setIpDetectedAt(ipData.detected_at);
+      }
+    };
+    loadLastIP();
+  }, []);
 
   if (isLoading) {
     return (
@@ -247,6 +303,73 @@ const ApiSettings = () => {
                 Salvar Configurações
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* IP Detection Card */}
+        <Card className="border-orange-500/30 bg-orange-500/5">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-orange-500/10">
+                <Globe className="h-5 w-5 text-orange-500" />
+              </div>
+              <div>
+                <CardTitle className="text-orange-500">IP de Saída (Whitelist)</CardTitle>
+                <CardDescription>
+                  IP usado pelas Edge Functions para requisições externas
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/20">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertCircle className="h-4 w-4 text-orange-500" />
+                <span className="font-medium text-orange-500">Atenção</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Edge Functions usam IPs dinâmicos que podem mudar a qualquer momento. 
+                Adicione este IP à whitelist da Playfivers, mas esteja ciente que pode precisar atualizar periodicamente.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Último IP Detectado</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={currentIP || "Clique em 'Detectar IP' para obter"}
+                  readOnly
+                  className="font-mono text-lg bg-secondary"
+                />
+                <Button variant="outline" size="icon" onClick={copyIP} disabled={!currentIP}>
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              {ipDetectedAt && (
+                <p className="text-xs text-muted-foreground">
+                  Detectado em: {new Date(ipDetectedAt).toLocaleString("pt-BR")}
+                </p>
+              )}
+            </div>
+
+            <Button 
+              onClick={detectIP} 
+              disabled={isLoadingIP}
+              className="w-full"
+              variant="outline"
+            >
+              {isLoadingIP ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Detectando IP...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Detectar IP Atual
+                </>
+              )}
+            </Button>
           </CardContent>
         </Card>
 
